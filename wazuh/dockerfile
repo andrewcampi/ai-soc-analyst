@@ -1,0 +1,45 @@
+FROM ubuntu:latest
+
+# Set the desired hostname
+ENV HOSTNAME wazuh_server
+
+# Install apt-get packages
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=America/New_York
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y iproute2 iputils-ping nmap arp-scan net-tools dnsutils isc-dhcp-client \
+    python3.11 python3-pip base-passwd brasero bsdutils cryptsetup cryptsetup-bin cryptsetup-initramfs \
+    curl dash diffutils dmeventd efibootmgr findutils fonts-indic genisoimage grep grub-common \
+    grub-efi-amd64-bin grub-efi-amd64-signed grub-gfxpayload-lists grub-pc grub-pc-bin grub2-common gzip \
+    hostname hyphen-en-us init language-pack-en language-pack-en-base language-pack-gnome-en \
+    language-pack-gnome-en-base libaio1 libdebconfclient0 libdevmapper-event1.02.1 liblvm2cmd2.03 \
+    libreoffice-help-common libreoffice-help-en-us lightdm linux-generic-hwe-22.04 login lvm2 macchanger mokutil \
+    mythes-en-us nano nautilus ncurses-base ncurses-bin openssh-server openssl os-prober shim-signed squashfs-tools \
+    thin-provisioning-tools thunderbird-locale-en thunderbird-locale-en-us update-motd wget xorriso systemd
+
+# Download and install Wazuh
+RUN curl -sO https://packages.wazuh.com/4.7/wazuh-install.sh && \
+    bash ./wazuh-install.sh -a
+
+# Set up systemd environment
+RUN systemctl enable wazuh-manager
+
+# Stop and disable ssh
+RUN systemctl disable ssh
+
+# Create a startup script to configure macvlan interface, set the hostname, and run systemd
+RUN echo "#!/bin/bash\n\
+if [ \"\$1\" = \"bash\" ]; then\n\
+ip addr flush dev eth0\n\
+ip link add enp1s0 link eth0 type macvlan mode bridge\n\
+ip link set enp1s0 up\n\
+dhclient enp1s0\n\
+hostname \$HOSTNAME\n\
+systemctl stop ssh\n\
+exec /lib/systemd/systemd\n\
+fi\n\
+exec \"\$@\"" > /entrypoint.sh && chmod +x /entrypoint.sh
+
+# Use the startup script as the entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]
